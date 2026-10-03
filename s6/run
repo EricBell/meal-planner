@@ -1,0 +1,9 @@
+# meal-planner s6 service for VPS deployment
+# Place this in /etc/s6/services/meal-planner/ on your VPS
+
+#!/command/execlineb -P
+with-contenv
+fdmove -c 2 1
+export HOME=/root
+export PATH=/usr/local/bin:/usr/bin:/bin
+exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000

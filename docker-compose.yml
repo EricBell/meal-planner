@@ -1,0 +1,46 @@
+# Docker Compose for Dokploy deployment
+# Dokploy reads this file and deploys each service as a separate app
+# The meal-planner service runs the FastAPI app + Telegram bot + APScheduler
+
+services:
+  meal-planner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meal-planner
+    restart: unless-stopped
+    environment:
+      # Telegram (REQUIRED)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # Notion (REQUIRED for sync)
+      - NOTION_TOKEN=${NOTION_TOKEN}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID}
+      - NOTION_PANTRY_DATABASE_ID=${NOTION_PANTRY_DATABASE_ID}
+      # Database (SQLite by default, can use PostgreSQL)
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/meal_planner.db}
+      # Scheduler
+      - MORNING_DELIVERY_HOUR=${MORNING_DELIVERY_HOUR:-8}
+      - MORNING_DELIVERY_MINUTE=${MORNING_DELIVERY_MINUTE:-0}
+      - WEEKLY_HARVEST_DAY=${WEEKLY_HARVEST_DAY:-sunday}
+      - WEEKLY_HARVEST_HOUR=${WEEKLY_HARVEST_HOUR:-10}
+      # Meal Planning
+      - DEFAULT_ENTREES=${DEFAULT_ENTREES:-beef,pork,chicken,haddock,salmon,shrimp,tofu,eggs,ground_beef,ground_turkey}
+      - DAYS_TO_PLAN=${DAYS_TO_PLAN:-7}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      # Persist SQLite database and any uploaded files
+      - meal-planner-data:/app/data
+    # No ports exposed - Dokploy handles ingress
+    # The app runs on port 8000 internally
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  meal-planner-data:
+    # Dokploy will create this as a named volume

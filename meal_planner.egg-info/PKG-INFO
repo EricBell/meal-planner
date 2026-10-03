@@ -1,0 +1,190 @@
+Metadata-Version: 2.4
+Name: meal-planner
+Version: 0.1.0
+Summary: Automated meal planning with pantry management, Telegram delivery, and Notion sync
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.109
+Requires-Dist: uvicorn[standard]>=0.27
+Requires-Dist: sqlmodel>=0.0.14
+Requires-Dist: apscheduler>=3.10
+Requires-Dist: python-telegram-bot>=21.0
+Requires-Dist: notion-client>=2.2
+Requires-Dist: pydantic>=2.6
+Requires-Dist: pydantic-settings>=2.2
+Requires-Dist: httpx>=0.26
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: alembic>=1.13
+Requires-Dist: structlog>=24.1
+Requires-Dist: tenacity>=8.2
+Requires-Dist: python-dateutil>=2.8
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Requires-Dist: pytest-cov>=4.1; extra == "dev"
+Requires-Dist: ruff>=0.2; extra == "dev"
+Requires-Dist: mypy>=1.8; extra == "dev"
+Requires-Dist: httpx>=0.26; extra == "dev"
+
+# Meal Planner
+
+Automated meal planning with pantry management, Telegram delivery, and Notion sync.
+
+## Features
+
+- **Constrained entree planning** - Only your approved proteins (beef, pork, chicken, haddock, salmon, shrimp, tofu, eggs, ground beef, ground turkey)
+- **Pantry-aware shopping lists** - Generates buy lists based on what you have vs. what recipes need
+- **Morning Telegram delivery** - Today's recipe with ingredients & instructions at 8 AM
+- **Interactive Telegram bot** - Replace meals, check pantry, search recipes, mark cooked
+- **Notion sync** - Harvest cooked meals to your Notion database for future reference
+- **APScheduler automation** - Daily planning, weekly harvest, all hands-off
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Telegram Bot  │────▶│  Meal Planner    │────▶│    Notion DB    │
+│  (Commands +    │     │  (FastAPI +      │     │  (Recipes +     │
+│   Morning Push) │     │   APScheduler)   │     │   History)      │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                       ┌──────────────────┐
+                       │   SQLite/Postgres│
+                       │  (Recipes, Plans,│
+                       │   Pantry, Shop)  │
+                       └──────────────────┘
+```
+
+## Quick Start (Local)
+
+```bash
+# 1. Clone and enter
+cd meal-planner
+
+# 2. Create venv and install
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# 3. Configure
+cp .env.example .env
+# Edit .env with your tokens
+
+# 4. Seed database
+python seed.py
+
+# 5. Run API (optional - for web UI)
+uvicorn app.main:app --reload
+
+# 6. Run bot + scheduler (production)
+python -m app.main
+```
+
+## Dokploy Deployment
+
+1. **Create a new app** in Dokploy → "Docker Compose"
+2. **Connect your Git repo** (push this folder to GitHub/GitLab first)
+3. **Set environment variables** in Dokploy app config:
+   - `TELEGRAM_BOT_TOKEN` - from @BotFather
+   - `TELEGRAM_CHAT_ID` - your chat ID (DM @userinfobot)
+   - `NOTION_TOKEN` - from https://www.notion.so/my-integrations
+   - `NOTION_DATABASE_ID` - from your Recipes database URL
+   - `DATABASE_URL` - optional, defaults to SQLite in volume
+4. **Deploy** - Dokploy builds the image and runs the container
+
+The service runs:
+- FastAPI on port 8000 (internal)
+- Telegram bot polling (background)
+- APScheduler jobs (background)
+
+## Notion Database Schema
+
+Create a database with these properties:
+
+| Property | Type | Required |
+|----------|------|----------|
+| Name | Title | ✅ |
+| Entree Type | Select | ✅ |
+| Prep Time (min) | Number | |
+| Cook Time (min) | Number | |
+| Servings | Number | |
+| Description | Rich Text | |
+| Source URL | URL | |
+| Tags | Multi-select | |
+| Status | Select (Active/Archived) | |
+
+The sync creates pages with:
+- Ingredients as bulleted list
+- Instructions as numbered list
+- All metadata as properties
+
+## Telegram Commands
+
+| Command | Description |
+|---------|-------------|
+| `/today` | Today's meal plan with full recipe |
+| `/week` | This week's meal plan overview |
+| `/shopping` | Current shopping list |
+| `/pantry` | Pantry inventory |
+| `/add_pantry <item> <qty> <unit>` | Add to pantry |
+| `/replace <YYYY-MM-DD>` | Replace a meal with alternatives |
+| `/search <query>` | Search local + Notion recipes |
+| `/harvest` | Sync cooked meals to Notion |
+| `/help` | Show help |
+
+Natural language also works: "What's for dinner?", "Show shopping list"
+
+## Scheduler Jobs
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `generate_meal_plan` | Daily 00:05 | Plan tomorrow if missing |
+| `weekly_meal_plan` | Sunday 01:00 | Plan full week + shopping list |
+| `morning_delivery` | Daily 08:00 | Send today's recipe via Telegram |
+| `weekly_harvest` | Sunday 10:00 | Push cooked meals to Notion |
+
+## Development
+
+```bash
+# Run tests
+pytest
+
+# Lint
+ruff check .
+
+# Type check
+mypy app/
+
+# Format
+ruff format .
+```
+
+## Project Structure
+
+```
+meal-planner/
+├── app/
+│   ├── main.py           # FastAPI app + endpoints
+│   ├── config.py         # Pydantic settings
+│   ├── database.py       # SQLModel engine/session
+│   ├── models/           # Database models
+│   ├── services/
+│   │   ├── pantry.py     # Inventory + shopping lists
+│   │   ├── recipe.py     # Recipes + meal planning
+│   │   └── notion.py     # Notion sync
+│   ├── bot/
+│   │   └── telegram_bot.py
+│   └── scheduler/
+│       └── jobs.py       # APScheduler jobs
+├── seed.py               # Initial data
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+└── .env.example
+```
+
+## License
+
+MIT
